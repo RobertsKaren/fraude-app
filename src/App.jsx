@@ -81,10 +81,37 @@ function computeSummary(rows) {
       diasMismoProducto++;
     }
 
-    const monto = dayRows.reduce(
-      (s, r) => s + (parseFloat(r.Monto) || 0),
-      0
-    );
+    // FIX 1: round to 2 decimals to avoid floating point noise
+    const monto = Math.round(
+      dayRows.reduce(
+        (s, r) => s + (parseFloat(r.Monto) || 0),
+        0
+      ) * 100
+    ) / 100;
+
+    // FIX 2: sum of Descuento per day, rounded to 2 decimals
+    const sumaDescDia = Math.round(
+      dayRows.reduce(
+        (s, r) => s + (parseFloat(r.Descuento) || 0),
+        0
+      ) * 100
+    ) / 100;
+
+    // FIX 3: collect unique non-null/non-empty promotions per day
+    const promociones = [
+      ...new Set(
+        dayRows
+          .map((r) => (r.RespuestaEHDescuento || "").trim())
+          .filter(
+            (v) =>
+              v &&
+              v.toLowerCase() !== "null" &&
+              v !== ""
+          )
+      )
+    ]
+      .sort()
+      .join(" | ");
 
     const sitios = [
       ...new Set(
@@ -112,7 +139,9 @@ function computeSummary(rows) {
       Combustibles: combRows.length,
       Tienda: dayRows.filter(isStore).length,
       Monto_Total: monto,
+      Suma_Descuento: sumaDescDia,
       Productos: productosStr,
+      Promociones: promociones,
       Sitios: sitios
     });
   });
@@ -137,10 +166,12 @@ function computeSummary(rows) {
     (r) => parseFloat(r.Descuento) > 0
   ).length;
 
-  const sumaDescuentos = rows.reduce(
-  (s, r) => s + (parseFloat(r.Descuento) || 0),
-  0
-);
+  const sumaDescuentos = Math.round(
+    rows.reduce(
+      (s, r) => s + (parseFloat(r.Descuento) || 0),
+      0
+    ) * 100
+  ) / 100;
 
   const mesesMap = {};
 
@@ -298,15 +329,26 @@ function buildExcel(data, selectedDocs) {
     border: BORDER
   };
 
+  // FIX 1: use numFmt "#,##0.00" (no $ prefix, just 2 decimals) for money columns
   const MONEY_STYLE = {
-    ...NORMAL_LEFT,
-    numFmt: '"$"#,##0.00'
+    font: { sz: 9 },
+    alignment: {
+      horizontal: "right",
+      vertical: "center"
+    },
+    border: BORDER,
+    numFmt: "#,##0.00"
   };
 
   const MONEY_BOLD = {
-  ...BOLD_CENTER,
-  numFmt: '"$"#,##0.00'
-};
+    font: { bold: true, sz: 10 },
+    alignment: {
+      horizontal: "center",
+      vertical: "center"
+    },
+    border: BORDER,
+    numFmt: "#,##0.00"
+  };
 
   const ALT_FILL = {
     fgColor: { rgb: "F7F9FC" }
@@ -366,25 +408,29 @@ function buildExcel(data, selectedDocs) {
       ? { ...NORMAL_LEFT, fill }
       : NORMAL_LEFT;
 
+    const moneyRowStyle = fill
+      ? { ...MONEY_STYLE, fill }
+      : MONEY_STYLE;
+
     resumenData.push(
       [
-        doc,
-        nombre,
-        s.totalTrx,
-        s.totalTienda,
-        s.totalComb,
-        s.diasDifProd,
-        s.diasMultiComb,
-        s.diasMismoProducto,
-        s.combDistintos,
-        s.sitiosDistintos,
-        s.totalConDescuento,
-        s.sumaDescuentos,
-        s.promTrxMes,
-        s.promDescMes,
-        fmtDate(s.fechaMin),
-        fmtDate(s.fechaMax)
-      ].map((v) => makeCell(v, rowStyle))
+        makeCell(doc, rowStyle),
+        makeCell(nombre, rowStyle),
+        makeCell(s.totalTrx, rowStyle),
+        makeCell(s.totalTienda, rowStyle),
+        makeCell(s.totalComb, rowStyle),
+        makeCell(s.diasDifProd, rowStyle),
+        makeCell(s.diasMultiComb, rowStyle),
+        makeCell(s.diasMismoProducto, rowStyle),
+        makeCell(s.combDistintos, rowStyle),
+        makeCell(s.sitiosDistintos, rowStyle),
+        makeCell(s.totalConDescuento, rowStyle),
+        makeCell(s.sumaDescuentos, moneyRowStyle),
+        makeCell(s.promTrxMes, rowStyle),
+        makeCell(s.promDescMes, rowStyle),
+        makeCell(fmtDate(s.fechaMin), rowStyle),
+        makeCell(fmtDate(s.fechaMax), rowStyle)
+      ]
     );
   });
 
@@ -394,7 +440,7 @@ function buildExcel(data, selectedDocs) {
   wsResumen["!merges"] = [
     {
       s: { r: 0, c: 0 },
-      e: { r: 0, c: 14 }
+      e: { r: 0, c: 15 }
     }
   ];
 
@@ -410,8 +456,9 @@ function buildExcel(data, selectedDocs) {
     { wch: 20 },
     { wch: 18 },
     { wch: 16 },
+    { wch: 18 },
     { wch: 16 },
-    { wch: 16 },
+    { wch: 14 },
     { wch: 14 },
     { wch: 14 }
   ];
@@ -487,16 +534,16 @@ function buildExcel(data, selectedDocs) {
       "Prom. Trx/Mes",
       "Prom. Desc./Mes",
       "Fecha mínima",
-      "Fecha máxima",
+      "Fecha máxima"
     ];
 
     const kpiVals2 = [
-      s.totalConDescuento,
-      s.sumaDescuentos,
-      s.promTrxMes,
-      s.promDescMes,
-      fmtDate(s.fechaMin),
-      fmtDate(s.fechaMax)
+      makeCell(s.totalConDescuento, BOLD_CENTER),
+      makeCell(s.sumaDescuentos, MONEY_BOLD),
+      makeCell(s.promTrxMes, BOLD_CENTER),
+      makeCell(s.promDescMes, BOLD_CENTER),
+      makeCell(fmtDate(s.fechaMin), BOLD_CENTER),
+      makeCell(fmtDate(s.fechaMax), BOLD_CENTER)
     ];
 
     wsData.push(
@@ -505,21 +552,20 @@ function buildExcel(data, selectedDocs) {
       )
     );
 
-    wsData.push(
-      kpiVals2.map((v) =>
-        makeCell(v, BOLD_CENTER)
-      )
-    );
+    wsData.push(kpiVals2);
 
     wsData.push([]);
 
+    // FIX 2+3: added "Suma Descuento" and "Promociones" columns
     const dayHdrs = [
       "Fecha",
       "Transacciones",
       "Combustibles",
       "Tienda",
       "Monto Total",
+      "Suma Descuento",
       "Productos",
+      "Promociones",
       "Sitios"
     ];
 
@@ -546,46 +592,51 @@ function buildExcel(data, selectedDocs) {
         makeCell(row.Transacciones, st),
         makeCell(row.Combustibles, st),
         makeCell(row.Tienda, st),
-        makeCell(
-          row.Monto_Total,
-          moneyStyle
-        ),
+        makeCell(row.Monto_Total, moneyStyle),
+        makeCell(row.Suma_Descuento, moneyStyle),
         makeCell(row.Productos, st),
+        makeCell(row.Promociones, st),
         makeCell(row.Sitios, st)
       ]);
     });
 
-    const lastRow =
-      8 + s.diasDetalle.length+1;
+    const dataStartRow = 9; // row index (1-based) where day data starts
+    const lastRow = dataStartRow - 1 + s.diasDetalle.length;
 
-wsData.push([
-  makeCell("TOTAL", {
-    ...BOLD_CENTER,
-    fill: ALT_FILL
-  }),
-  {
-    t: "n",
-    f: `SUM(B9:B${lastRow})`,
-    s: BOLD_CENTER
-  },
-  {
-    t: "n",
-    f: `SUM(C9:C${lastRow})`,
-    s: BOLD_CENTER
-  },
-  {
-    t: "n",
-    f: `SUM(D9:D${lastRow})`,
-    s: BOLD_CENTER
-  },
-  {
-    t: "n",
-    f: `SUM(E9:E${lastRow})`,
-    s: MONEY_BOLD
-  },
-  makeCell("", NORMAL_LEFT),
-  makeCell("", NORMAL_LEFT)
-]);
+    wsData.push([
+      makeCell("TOTAL", {
+        ...BOLD_CENTER,
+        fill: ALT_FILL
+      }),
+      {
+        t: "n",
+        f: `SUM(B${dataStartRow}:B${lastRow})`,
+        s: BOLD_CENTER
+      },
+      {
+        t: "n",
+        f: `SUM(C${dataStartRow}:C${lastRow})`,
+        s: BOLD_CENTER
+      },
+      {
+        t: "n",
+        f: `SUM(D${dataStartRow}:D${lastRow})`,
+        s: BOLD_CENTER
+      },
+      {
+        t: "n",
+        f: `SUM(E${dataStartRow}:E${lastRow})`,
+        s: MONEY_BOLD
+      },
+      {
+        t: "n",
+        f: `SUM(F${dataStartRow}:F${lastRow})`,
+        s: MONEY_BOLD
+      },
+      makeCell("", NORMAL_LEFT),
+      makeCell("", NORMAL_LEFT),
+      makeCell("", NORMAL_LEFT)
+    ]);
 
     const ws =
       XLSX.utils.aoa_to_sheet(wsData);
@@ -593,7 +644,7 @@ wsData.push([
     ws["!merges"] = [
       {
         s: { r: 0, c: 0 },
-        e: { r: 0, c: 6 }
+        e: { r: 0, c: 8 }
       }
     ];
 
@@ -603,7 +654,9 @@ wsData.push([
       { wch: 14 },
       { wch: 12 },
       { wch: 18 },
-      { wch: 50 },
+      { wch: 18 },
+      { wch: 40 },
+      { wch: 60 },
       { wch: 40 }
     ];
 
@@ -613,7 +666,7 @@ wsData.push([
     };
 
     ws["!autofilter"] = {
-      ref: `A8:G${lastRow}`
+      ref: `A8:I${lastRow + 1}`
     };
 
     XLSX.utils.book_append_sheet(
@@ -796,47 +849,47 @@ export default function App() {
               }}
             />
           </div>
-<div
-  style={{
-    display: "flex",
-    gap: 10,
-    marginBottom: 12
-  }}
->
-  <button
-    onClick={() => {
-      if (
-        selectedDocs.length ===
-        filteredDocs.length
-      ) {
-        setSelectedDocs([]);
-      } else {
-        setSelectedDocs(filteredDocs);
-      }
-    }}
-    style={{
-      padding: "10px 14px",
-      fontSize: 14
-    }}
-  >
-    {selectedDocs.length ===
-      filteredDocs.length &&
-    filteredDocs.length > 0
-      ? "Deseleccionar todos"
-      : "Seleccionar todos"}
-  </button>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              marginBottom: 12
+            }}
+          >
+            <button
+              onClick={() => {
+                if (
+                  selectedDocs.length ===
+                  filteredDocs.length
+                ) {
+                  setSelectedDocs([]);
+                } else {
+                  setSelectedDocs(filteredDocs);
+                }
+              }}
+              style={{
+                padding: "10px 14px",
+                fontSize: 14
+              }}
+            >
+              {selectedDocs.length ===
+                filteredDocs.length &&
+              filteredDocs.length > 0
+                ? "Deseleccionar todos"
+                : "Seleccionar todos"}
+            </button>
 
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      fontSize: 14,
-      color: "#666"
-    }}
-  >
-    {selectedDocs.length} seleccionados
-  </div>
-</div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                fontSize: 14,
+                color: "#666"
+              }}
+            >
+              {selectedDocs.length} seleccionados
+            </div>
+          </div>
           <div
             style={{
               border: "1px solid #ccc",
