@@ -137,6 +137,11 @@ function computeSummary(rows) {
     (r) => parseFloat(r.Descuento) > 0
   ).length;
 
+  const sumaDescuentos = rows.reduce(
+  (s, r) => s + (parseFloat(r.Descuento) || 0),
+  0
+);
+
   const mesesMap = {};
 
   rows.forEach((r) => {
@@ -200,6 +205,7 @@ function computeSummary(rows) {
     combDistintos,
     sitiosDistintos,
     totalConDescuento,
+    sumaDescuentos,
     promTrxMes,
     promDescMes,
     fechaMin,
@@ -297,6 +303,11 @@ function buildExcel(data, selectedDocs) {
     numFmt: '"$"#,##0.00'
   };
 
+  const MONEY_BOLD = {
+  ...BOLD_CENTER,
+  numFmt: '"$"#,##0.00'
+};
+
   const ALT_FILL = {
     fgColor: { rgb: "F7F9FC" }
   };
@@ -333,6 +344,7 @@ function buildExcel(data, selectedDocs) {
     "Combustibles distintos",
     "Sitios distintos",
     "Con descuento",
+    "Suma Descuentos",
     "Prom. Trx/Mes",
     "Prom. Desc./Mes",
     "Fecha mínima",
@@ -367,6 +379,7 @@ function buildExcel(data, selectedDocs) {
         s.combDistintos,
         s.sitiosDistintos,
         s.totalConDescuento,
+        s.sumaDescuentos,
         s.promTrxMes,
         s.promDescMes,
         fmtDate(s.fechaMin),
@@ -470,14 +483,16 @@ function buildExcel(data, selectedDocs) {
 
     const kpiLabels2 = [
       "Con descuento",
+      "Suma descuentos",
       "Prom. Trx/Mes",
       "Prom. Desc./Mes",
       "Fecha mínima",
-      "Fecha máxima"
+      "Fecha máxima",
     ];
 
     const kpiVals2 = [
       s.totalConDescuento,
+      s.sumaDescuentos,
       s.promTrxMes,
       s.promDescMes,
       fmtDate(s.fechaMin),
@@ -541,35 +556,36 @@ function buildExcel(data, selectedDocs) {
     });
 
     const lastRow =
-      8 + s.diasDetalle.length;
+      8 + s.diasDetalle.length+1;
 
-    wsData.push([
-      makeCell("TOTAL", {
-        ...BOLD_CENTER,
-        fill: ALT_FILL
-      }),
-      {
-        f: `SUMA(B9:B${lastRow})`,
-        s: BOLD_CENTER
-      },
-      {
-        f: `SUMA(C9:C${lastRow})`,
-        s: BOLD_CENTER
-      },
-      {
-        f: `SUMA(D9:D${lastRow})`,
-        s: BOLD_CENTER
-      },
-      {
-        f: `SUMA(E9:E${lastRow})`,
-        s: {
-          ...BOLD_CENTER,
-          numFmt: '"$"#,##0.00'
-        }
-      },
-      makeCell("", NORMAL_LEFT),
-      makeCell("", NORMAL_LEFT)
-    ]);
+wsData.push([
+  makeCell("TOTAL", {
+    ...BOLD_CENTER,
+    fill: ALT_FILL
+  }),
+  {
+    t: "n",
+    f: `SUM(B9:B${lastRow})`,
+    s: BOLD_CENTER
+  },
+  {
+    t: "n",
+    f: `SUM(C9:C${lastRow})`,
+    s: BOLD_CENTER
+  },
+  {
+    t: "n",
+    f: `SUM(D9:D${lastRow})`,
+    s: BOLD_CENTER
+  },
+  {
+    t: "n",
+    f: `SUM(E9:E${lastRow})`,
+    s: MONEY_BOLD
+  },
+  makeCell("", NORMAL_LEFT),
+  makeCell("", NORMAL_LEFT)
+]);
 
     const ws =
       XLSX.utils.aoa_to_sheet(wsData);
